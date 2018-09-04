@@ -232,12 +232,29 @@ TEST(serialize_vector)
     }
 }
 
+TEST(to_string)
+{
+    size_t binson_expected_size = sizeof(binson_bytes) - 1;
+    binson_parser p;
+    ASSERT_TRUE(binson_parser_init(&p, binson_bytes, binson_expected_size));
+    ASSERT_TRUE(binson_parser_verify(&p));
+
+    Binson b;
+    binson_parser_reset(&p);
+    b.deserialize(&p);
+
+    string binson_string = b.toStr();
+    printf("%s\n", binson_string.c_str());
+
+}
+
 /*======= Main function =====================================================*/
 
 int main(void) {
     RUN_TEST(binson_class_test1);
     RUN_TEST(unsorted_writing);
     RUN_TEST(serialize_vector);
+    RUN_TEST(to_string);
     PRINT_RESULT();
 }
 
