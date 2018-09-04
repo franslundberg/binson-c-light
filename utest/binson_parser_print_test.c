@@ -113,6 +113,10 @@ TEST(to_string_should_give_required_size)
     ASSERT_TRUE(binson_parser_to_string(&p, new_buffer, &required_size, false));
     free(new_buffer);
 
+    size = 10;
+    ASSERT_TRUE(binson_parser_to_string(&p, buffer, &size, false));
+    ASSERT_TRUE(size ==  required_size);
+
 }
 
 /*======= Main function =====================================================*/
