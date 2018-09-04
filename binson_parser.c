@@ -59,7 +59,10 @@
 
 /*======= Local function prototypes =========================================*/
 /*======= Local variable declarations =======================================*/
-
+static bool _binson_parser_init(binson_parser *parser,
+                               const uint8_t *buffer,
+                               size_t buffer_size,
+                               uint8_t type);
 static bool _parse_integer(bbuf *length_data, int64_t *value, bool check_boundaries);
 static int _cmp_name(bbuf *a, bbuf *b);
 #define _advance(p, s) _advance_parsing(p, s, NULL)
@@ -82,37 +85,11 @@ bool binson_parser_init_object(binson_parser *parser,
         return false;
     }
 
-    /*
-     * Minimum object size is 2 bytes for an empty
-     * object: { }
-     */
-    if (buffer_size < BINSON_OBJECT_MINIMUM_SIZE) {
-        parser->error_flags = BINSON_ERROR_RANGE;
-        return false;
-    }
+    return _binson_parser_init(parser,
+                               buffer,
+                               buffer_size,
+                               BINSON_PTYPE_OBJECT);
 
-    /*
-     * The serialized binson object must begin and end correctly:
-     * object = { ... }
-     */
-    if (!((BINSON_DEF_OBJECT_BEGIN == buffer[0]) &&
-          (BINSON_DEF_OBJECT_END == buffer[buffer_size-1]))) {
-        parser->error_flags = BINSON_ERROR_FORMAT;
-        return false;
-    }
-
-    memset(parser, 0x00U, sizeof(binson_parser));
-    parser->buffer      = buffer;
-    parser->buffer_size = buffer_size;
-    parser->error_flags = BINSON_ERROR_NONE;
-
-    parser->type            = BINSON_PTYPE_OBJECT;
-    parser->depth           = 0;
-    parser->buffer_used     = 0;
-    parser->state[0].flags  = BINSON_STATE_UNDEFINED;
-    parser->current_state = &parser->state[0];
-
-    return true;
 }
 
 bool binson_parser_init_array(binson_parser *parser,
@@ -123,37 +100,10 @@ bool binson_parser_init_array(binson_parser *parser,
         return false;
     }
 
-    /*
-     * Minimum object size is 2 bytes for an empty
-     * object: { }
-     */
-    if (buffer_size < BINSON_OBJECT_MINIMUM_SIZE) {
-        parser->error_flags = BINSON_ERROR_RANGE;
-        return false;
-    }
-
-    /*
-     * The serialized binson object must begin and end correctly:
-     * array = [ ... ]
-     */
-    if (!((BINSON_DEF_ARRAY_BEGIN == buffer[0]) &&
-          (BINSON_DEF_ARRAY_END == buffer[buffer_size-1]))) {
-        parser->error_flags = BINSON_ERROR_FORMAT;
-        return false;
-    }
-
-    memset(parser, 0x00U, sizeof(binson_parser));
-    parser->buffer      = buffer;
-    parser->buffer_size = buffer_size;
-    parser->error_flags = BINSON_ERROR_NONE;
-
-    parser->type            = BINSON_PTYPE_ARRAY;
-    parser->depth           = 1;
-    parser->buffer_used     = 0;
-    parser->state[0].flags  = BINSON_STATE_UNDEFINED;
-    parser->current_state = &parser->state[0];
-
-    return true;
+    return _binson_parser_init(parser,
+                               buffer,
+                               buffer_size,
+                               BINSON_PTYPE_ARRAY);
 
 }
 
@@ -167,14 +117,10 @@ bool binson_parser_reset(binson_parser *parser)
     binson_cb cb        = parser->cb;
     void *cb_context    = parser->cb_context;
 
-    if (parser->type == BINSON_TYPE_OBJECT)
-    {
-        ret = binson_parser_init_object(parser, parser->buffer, parser->buffer_size);
-    }
-    else
-    {
-        ret = binson_parser_init_array(parser, parser->buffer, parser->buffer_size);
-    }
+    ret = _binson_parser_init(parser,
+                              parser->buffer,
+                              parser->buffer_size,
+                              parser->type);
 
     parser->cb = cb;
     parser->cb_context = cb_context;
@@ -207,11 +153,7 @@ size_t binson_parser_get_depth(binson_parser *parser)
 
 bool binson_parser_next(binson_parser *parser)
 {
-    if (NULL == parser) {
-        return false;
-    }
-
-    return _advance(parser, BINSON_ADVANCE_VALUE);
+    return (NULL == parser) ? false : _advance(parser, BINSON_ADVANCE_VALUE);
 }
 
 bool binson_parser_next_ensure(binson_parser *parser, binson_type field_type)
@@ -291,11 +233,7 @@ bool binson_parser_field_ensure_with_length(binson_parser *parser,
 
 bool binson_parser_go_into_object(binson_parser *parser)
 {
-    if (NULL == parser) {
-        return false;
-    }
-
-    return _advance(parser, BINSON_ADVANCE_ENTER_OBJECT);
+    return (NULL == parser) ? false : _advance(parser, BINSON_ADVANCE_ENTER_OBJECT);
 }
 
 bool binson_parser_leave_object(binson_parser *parser)
@@ -319,11 +257,7 @@ bool binson_parser_leave_object(binson_parser *parser)
 
 bool binson_parser_go_into_array(binson_parser *parser)
 {
-    if (NULL == parser) {
-        return false;
-    }
-
-    return _advance(parser, BINSON_ADVANCE_ENTER_ARRAY);
+    return (NULL == parser) ? false : _advance(parser, BINSON_ADVANCE_ENTER_ARRAY);
 }
 
 bool binson_parser_leave_array(binson_parser *parser)
@@ -552,9 +486,28 @@ struct _to_string_ctx {
     size_t buffer_size;
     size_t buffer_used;
     uint8_t pstate;
-    bool nice;
+    bool req_size;
     bool buffer_full;
 };
+
+static size_t _uptade_available(struct _to_string_ctx *ctx, size_t used)
+{
+
+    if (!_check_boundary(ctx->buffer_used, used, ctx->buffer_size) &&
+        !_check_boundary(ctx->buffer_used, used, SIZE_MAX)) {
+        ctx->buffer_full = true;
+    }
+
+    ctx->buffer_used += used;
+
+    if ((ctx->buffer_used > ctx->buffer_size ) || ctx->req_size) {
+        return 0;
+    }
+    else {
+        return (ctx->buffer_size - ctx->buffer_used);
+    }
+
+}
 
 static void _binson_to_string_cb(binson_parser *parser, uint16_t next_state, void *context)
 {
@@ -562,23 +515,16 @@ static void _binson_to_string_cb(binson_parser *parser, uint16_t next_state, voi
     binson_state *state = parser->current_state;
     struct _to_string_ctx *ctx = (struct _to_string_ctx *) context;
     uint8_t *pstate = &ctx->pstate;
-    char *pbuf = &ctx->buffer[ctx->buffer_used];
+    char *pbuf = (ctx->buffer != NULL) ? &ctx->buffer[ctx->buffer_used] : NULL;
 
-    if (ctx->buffer_full || ctx->buffer_used >= ctx->buffer_size) {
-        return;
-    }
+    size_t available = _uptade_available(ctx, 0);
 
-    size_t available = ctx->buffer_size - ctx->buffer_used;
     size_t ret = 0;
 
     if (next_state != BINSON_STATE_PARSED_ARRAY_END && *pstate == 0x05) {
         ret = snprintf(pbuf, available, ",");
-        if (!_check_boundary(ctx->buffer_used, ret, ctx->buffer_size)) {
-            ctx->buffer_full = true;
-            return;
-        }
-        ctx->buffer_used += ret;
-        pbuf = &ctx->buffer[ctx->buffer_used];
+        available = _uptade_available(ctx, ret);
+        pbuf = (ctx->buffer != NULL) ? &ctx->buffer[ctx->buffer_used] : NULL;
     }
 
     if (*pstate == 0x04) {
@@ -610,12 +556,8 @@ static void _binson_to_string_cb(binson_parser *parser, uint16_t next_state, voi
         case BINSON_STATE_PARSED_FIELD_NAME:
             if (*pstate == 0x02) {
                 ret = snprintf(pbuf, available, ",");
-                if (!_check_boundary(ctx->buffer_used, ret, ctx->buffer_size)) {
-                    ctx->buffer_full = true;
-                    return;
-                }
-                ctx->buffer_used += ret;
-                pbuf = &ctx->buffer[ctx->buffer_used];
+                available = _uptade_available(ctx, ret);
+                pbuf = (ctx->buffer != NULL) ? &ctx->buffer[ctx->buffer_used] : NULL;
             }
             *pstate = 0x02;
             ret = snprintf(pbuf, available, "\"%*.*s\":", 0, (int) state->current_name.bsize, (const char* ) parser->current_state->current_name.bptr);
@@ -633,35 +575,28 @@ static void _binson_to_string_cb(binson_parser *parser, uint16_t next_state, voi
             ret = snprintf(pbuf, available, "%" PRId64 "", state->current_value.integer_value);
             break;
         case BINSON_STATE_PARSED_BYTES:
-            ret = snprintf(pbuf, available, "\"0x");
-            if (!_check_boundary(ctx->buffer_used, ret, ctx->buffer_size)) {
+            ret = snprintf(pbuf, available, "\"0x"); /* 3 */
+            if (state->current_value.bytes_value.bsize > (SIZE_MAX/2)) {
                 ctx->buffer_full = true;
                 return;
             }
-            ctx->buffer_used += ret;
-            pbuf = &ctx->buffer[ctx->buffer_used];
-            if ((state->current_value.bytes_value.bsize > (SIZE_MAX/2)) &&
-                !_check_boundary(ctx->buffer_used, (state->current_value.bytes_value.bsize*2) + 1, ctx->buffer_size)) {
-                ctx->buffer_full = true;
-                return;
+            ret += (state->current_value.bytes_value.bsize * 2);
+            ret += 1; /* For trailing " */
+            if (pbuf != NULL && _check_boundary(ctx->buffer_used, ret, ctx->buffer_size))
+            {
+                pbuf += 3;
+                size_t i;
+                for (i = 0; i < state->current_value.bytes_value.bsize; i++) {
+                    snprintf(pbuf, available, "%02x", state->current_value.bytes_value.bptr[i]);
+                    pbuf += 2;
+                }
+                snprintf(pbuf, available, "\"");
             }
-            ret = 0;
-            size_t i;
-            for (i = 0; i < state->current_value.bytes_value.bsize; i++) {
-                ret += snprintf(&pbuf[ret], available, "%02x", state->current_value.bytes_value.bptr[i]);
-            }
-            ret += snprintf(&pbuf[ret], available, "\"");
             break;
             
     }
 
-
-    if (!_check_boundary(ctx->buffer_used, ret, ctx->buffer_size)) {
-        ctx->buffer_full = true;
-        return;
-    }
-
-    ctx->buffer_used += ret;
+    _uptade_available(ctx, ret);
 
 }
 
@@ -670,16 +605,18 @@ bool binson_parser_to_string(binson_parser *parser,
                              size_t *buf_size,
                              bool nice)
 {
-    if (NULL == parser || NULL == pbuf || NULL == buf_size) {
+    if (NULL == parser || NULL == buf_size) {
         return false;
     }
+
+    (void) nice; /* For backwards compatibility */
 
     struct _to_string_ctx ctx;
     ctx.buffer = pbuf;
     ctx.buffer_size = *buf_size;
     ctx.buffer_used = 0;
     ctx.pstate = 0;
-    ctx.nice = nice;
+    ctx.req_size = (NULL == pbuf) || (0 == *buf_size);
     ctx.buffer_full = false;
 
     parser->cb_context = &ctx;
@@ -687,16 +624,59 @@ bool binson_parser_to_string(binson_parser *parser,
     bool ret = binson_parser_verify(parser);
     parser->cb = NULL;
     parser->cb_context = NULL;
-    if (ret && !ctx.buffer_full) {
-        *buf_size = ctx.buffer_used;
-        return true;
-    }
-    return false;
+    *buf_size = ctx.buffer_used;
+    return ret;
 }
 
 /*======= Local function implementations ====================================*/
 
+static bool _binson_parser_init(binson_parser *parser,
+                               const uint8_t *buffer,
+                               size_t buffer_size,
+                               uint8_t type)
+{
+    memset(parser, 0x00U, sizeof(binson_parser));
+    parser->buffer      = buffer;
+    parser->buffer_size = buffer_size;
+    parser->error_flags = BINSON_ERROR_NONE;
 
+    parser->type            = type;
+    parser->depth           = (type == BINSON_PTYPE_ARRAY) ? 1 : 0;
+    parser->buffer_used     = 0;
+    parser->state[0].flags  = BINSON_STATE_UNDEFINED;
+    parser->current_state = &parser->state[0];
+
+    if (buffer_size < BINSON_OBJECT_MINIMUM_SIZE) {
+        parser->error_flags = BINSON_ERROR_RANGE;
+        return false;
+    }
+
+    if (parser->type == BINSON_PTYPE_OBJECT) {
+        /*
+         * The serialized binson object must begin and end correctly:
+         * object = { ... }
+         */
+        if (!((BINSON_DEF_OBJECT_BEGIN == buffer[0]) &&
+              (BINSON_DEF_OBJECT_END == buffer[buffer_size-1]))) {
+            parser->error_flags = BINSON_ERROR_FORMAT;
+            return false;
+        }
+    }
+    else {
+        /*
+         * The serialized binson object must begin and end correctly:
+         * array = [ ... ]
+         */
+        if (!((BINSON_DEF_ARRAY_BEGIN == buffer[0]) &&
+              (BINSON_DEF_ARRAY_END == buffer[buffer_size-1]))) {
+            parser->error_flags = BINSON_ERROR_FORMAT;
+            return false;
+        }
+    }
+
+    return true;
+
+}
 
 static bool _parse_integer(bbuf *length_data, int64_t *value, bool check_boundaries)
 {

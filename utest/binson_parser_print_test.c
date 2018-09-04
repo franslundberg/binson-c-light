@@ -12,6 +12,8 @@
 #include <stdio.h>
 #include <float.h>
 #include <string.h>
+#include <stdlib.h>
+#include <unistd.h>
 
 #include "binson_defines.h"
 #include "binson_parser.h"
@@ -68,8 +70,21 @@ static const uint8_t binson_bytes[104] = "\x40\x14\x01\x41\x14\x01\x42\x14\x01\x
 TEST(print_binson)
 {
     binson_parser p;
+    char buffer_print[512];
+    int out_pipe[2];
+    int saved_stdout;
+    saved_stdout = dup(STDOUT_FILENO);  /* save stdout for display later */
+    if( pipe(out_pipe) != 0 ) { /* make a pipe */
+        printf("...\r\n");
+        exit(1);
+    }
+    dup2(out_pipe[1], STDOUT_FILENO);   /* redirect stdout to the pipe */
+    close(out_pipe[1]);
     binson_parser_init(&p, binson_bytes, sizeof(binson_bytes));
     ASSERT_TRUE(binson_parser_print(&p));
+    fflush(stdout);
+    size_t printed_size = read(out_pipe[0], buffer_print, sizeof(buffer_print));
+    dup2(saved_stdout, STDOUT_FILENO);
     /* Expected:
      * {"A":"B","B":{"A":"B"},"C":["A","A",{"A":"B","B":["A","A",{"A":"B"},[[[[{"A":"B"}]]]]]},"A"],"D":3.141593,"E":false,"F":127,"G":"0x0202"}
      * Actual:
@@ -78,13 +93,33 @@ TEST(print_binson)
     char buffer[512];
     size_t size = sizeof(buffer);
     ASSERT_TRUE(binson_parser_to_string(&p, buffer, &size, false));
-    printf("%*.*s", 0, (int) size, buffer);
+    ASSERT_TRUE(size == printed_size);
+    ASSERT_TRUE(memcmp(buffer, buffer_print, size) == 0);
+}
+
+TEST(to_string_should_give_required_size)
+{
+    binson_parser p;
+    binson_parser_init(&p, binson_bytes, sizeof(binson_bytes));
+
+    char buffer[512];
+    size_t size = sizeof(buffer);
+    ASSERT_TRUE(binson_parser_to_string(&p, buffer, &size, false));
+
+    size_t required_size = 0;
+    ASSERT_TRUE(binson_parser_to_string(&p, NULL, &required_size, false));
+    ASSERT_TRUE(size ==  required_size);
+    char *new_buffer = malloc(required_size);
+    ASSERT_TRUE(binson_parser_to_string(&p, new_buffer, &required_size, false));
+    free(new_buffer);
+
 }
 
 /*======= Main function =====================================================*/
 
 int main(void) {
     RUN_TEST(print_binson);
+    RUN_TEST(to_string_should_give_required_size);
     PRINT_RESULT();
 }
 

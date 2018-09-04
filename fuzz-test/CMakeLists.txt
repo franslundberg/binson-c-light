@@ -13,6 +13,9 @@ add_sanitizers(fuzz_binson)
 add_executable(fuzz_defined fuzz_defined.c ../binson_parser.c)
 add_sanitizers(fuzz_defined)
 
+add_executable(fuzz_defined2 fuzz_defined2.c ../binson_parser.c)
+add_sanitizers(fuzz_defined2)
+
 add_executable(fuzz_to_string fuzz_to_string.c ../binson_parser.c)
 target_compile_definitions(fuzz_to_string PRIVATE WITH_TO_STRING=1)
 add_sanitizers(fuzz_to_string)

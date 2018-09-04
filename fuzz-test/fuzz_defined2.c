@@ -20,6 +20,9 @@
 /*======= Type Definitions ==================================================*/
 /*======= Local function prototypes =========================================*/
 /*======= Local variable declarations =======================================*/
+
+static bool parse_binson(uint8_t *buffer, uint32_t size);
+
 /*======= Global function implementations ===================================*/
 
 static int __main(int argc, char **argv)
@@ -27,11 +30,9 @@ static int __main(int argc, char **argv)
 
     (void) argc;
     (void) argv;
-
     ssize_t size;
     uint8_t *buffer_cpy;
     uint8_t buffer[4096];
-    char *str_buffer;
 
 
     size = read(0, buffer, sizeof(buffer));
@@ -48,23 +49,12 @@ static int __main(int argc, char **argv)
     }
 
     memcpy(buffer_cpy, buffer, size);
-    binson_parser p;
-    size_t psize = sizeof(str_buffer);
-    binson_parser_init(&p, buffer, size);
-    ret = binson_parser_to_string(&p, NULL, &psize, true);
+    ret = parse_binson(buffer_cpy, size);
+
     if (ret) {
-        str_buffer = malloc(psize);
-        if (str_buffer == NULL) {
-            return -1;
-        }
-        ret = binson_parser_to_string(&p, str_buffer, &psize, true);
-        assert(ret);
-        printf("%*.*s\r\n", 0, (int) psize, str_buffer);
         for (ssize_t i = 0; i < size; i++) {
             printf("%02x", buffer_cpy[i]);
         } printf("\r\n");
-        free(str_buffer);
-
     }
 
     free(buffer_cpy);
@@ -88,3 +78,36 @@ int main(int argc, char **argv)
 
 
 /*======= Local function implementations ====================================*/
+
+#define VERIFY(x) if(!(x)) return false
+
+static bool parse_binson(uint8_t *buffer, uint32_t size)
+{
+
+    binson_parser p;
+
+    binson_parser_init(&p, buffer, size);
+    VERIFY(binson_parser_verify(&p));
+    VERIFY(binson_parser_go_into_object(&p));
+    VERIFY(binson_parser_get_depth(&p) == 1);
+
+    VERIFY(binson_parser_next(&p));
+    bbuf *data;
+    data = binson_parser_get_name(&p);
+    VERIFY(data->bsize == 1);
+    VERIFY(data->bptr[0] == 0x41);
+    VERIFY(binson_parser_get_type(&p) == BINSON_TYPE_STRING);
+    data = binson_parser_get_string_bbuf(&p);
+    VERIFY(data->bsize == 1);
+    VERIFY(data->bptr[0] == 0x41);
+    VERIFY(!binson_parser_next(&p));
+    VERIFY(binson_parser_leave_object(&p));
+    assert(p.buffer_used == size);
+    uint8_t expected[8] = { /* 4014014114014141*/
+        0x40, 0x14, 0x01, 0x41, 0x14, 0x01, 0x41, 0x41
+    };
+    assert(memcmp(buffer, expected, size) == 0);
+
+
+    return true;
+}
