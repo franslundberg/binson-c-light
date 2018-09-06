@@ -107,15 +107,15 @@ TEST(to_string_should_give_required_size)
     ASSERT_TRUE(binson_parser_to_string(&p, buffer, &size, false));
 
     size_t required_size = 0;
-    ASSERT_TRUE(binson_parser_to_string(&p, NULL, &required_size, false));
+    ASSERT_FALSE(binson_parser_to_string(&p, NULL, &required_size, false));
     ASSERT_TRUE(size ==  required_size);
     char *new_buffer = malloc(required_size);
     ASSERT_TRUE(binson_parser_to_string(&p, new_buffer, &required_size, false));
     free(new_buffer);
 
     size = 10;
-    ASSERT_TRUE(binson_parser_to_string(&p, buffer, &size, false));
-    ASSERT_TRUE(size ==  required_size);
+    ASSERT_FALSE(binson_parser_to_string(&p, buffer, &size, false));
+    ASSERT_TRUE(size == required_size);
 
 }
 

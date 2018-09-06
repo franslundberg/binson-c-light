@@ -49,12 +49,13 @@ static int __main(int argc, char **argv)
 
     memcpy(buffer_cpy, buffer, size);
     binson_parser p;
-    size_t psize = sizeof(str_buffer);
+    size_t psize = 0;
     binson_parser_init(&p, buffer, size);
     ret = binson_parser_to_string(&p, NULL, &psize, true);
     if (ret) {
         str_buffer = malloc(psize);
         if (str_buffer == NULL) {
+            free(buffer_cpy);
             return -1;
         }
         ret = binson_parser_to_string(&p, str_buffer, &psize, true);
