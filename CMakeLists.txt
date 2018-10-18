@@ -34,25 +34,6 @@ if(BUILD_TESTS)
   add_subdirectory(fuzz-test)
   add_subdirectory(utest)
 
-
-  add_executable(r_fuzz_defined fuzz-test/fuzz_defined.c)
-  target_link_libraries(r_fuzz_defined binson_parser)
-  add_sanitizers(r_fuzz_defined)
-
-
-  add_executable(r_fuzz_parser_verify fuzz-test/fuzz_parser_verify.c)
-  target_link_libraries(r_fuzz_parser_verify binson_parser)
-  add_sanitizers(r_fuzz_parser_verify)
-
-  add_executable(r_fuzz_goinoutobj fuzz-test/fuzz_goinoutobj.c)
-  target_link_libraries(r_fuzz_goinoutobj binson_parser)
-  add_sanitizers(r_fuzz_goinoutobj)
-
-  add_executable(r_fuzz_goinoutarr fuzz-test/fuzz_goinoutarr.c)
-  target_link_libraries(r_fuzz_goinoutarr binson_parser)
-  add_sanitizers(r_fuzz_goinoutarr)
-
-
   get_filename_component(_fullpath "fuzz-test/generated_test_cases" REALPATH)
   if (EXISTS "${_fullpath}")
     file(GLOB files "fuzz-test/generated_test_cases/*/*.c")

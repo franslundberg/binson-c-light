@@ -3,6 +3,10 @@
 harden_build_dir="build_afl_harden"
 asan_build_dir="build_afl_asan"
 debug_build_dir="build_debug"
+libfuzzer_no_sanitizer_build_dir="build_libfuzzer_no_sanitizer"
+libfuzzer_asan_build_dir="build_libfuzzer_asan"
+libfuzzer_ubsan_build_dir="build_libfuzzer_ubsan"
+libfuzzer_msan_build_dir="build_libfuzzer_msan"
 testcases_dir="input"
 
 valid_targets=(`ls -Sr fuzz_*.c fuzz_*.cpp | cut -d'.' -f1`)
@@ -31,7 +35,7 @@ build_targets() {
     cmake \
         -DCMAKE_CXX_COMPILER=$AFL_CXX \
         -DCMAKE_C_COMPILER=$AFL_CC \
-        -DCMAKE_C_FLAGS="-O9 -std=c99 -Wall -Wextra -Wpedantic -Werror -Wno-gnu-statement-expression" .. && \
+        -DCMAKE_C_FLAGS="-O9 -std=c99 -Wall -Wextra -Wpedantic -Werror -Wno-gnu-statement-expression -DFUZZ_TOOL=2" .. && \
     make -j && \
     cd .. && \
     unset AFL_HARDEN && \
@@ -41,17 +45,62 @@ build_targets() {
     cmake \
         -DCMAKE_CXX_COMPILER=$AFL_CXX \
         -DCMAKE_C_COMPILER=$AFL_CC \
-        -DCMAKE_C_FLAGS="-O9 -std=c99 -Wall -Wextra -Wpedantic -Werror -Wno-gnu-statement-expression" .. && \
+        -DCMAKE_C_FLAGS="-O9 -std=c99 -Wall -Wextra -Wpedantic -Werror -Wno-gnu-statement-expression -DFUZZ_TOOL=2" .. && \
     make -j && \
     unset AFL_USE_ASAN && \
     cd .. && \
     mkdir -p $debug_build_dir && \
     cd $debug_build_dir && \
     cmake \
-        -DCMAKE_C_FLAGS="-O0 -g -ggdb -std=c99 -Wall -Wextra -Wpedantic -Werror -fprofile-arcs -ftest-coverage" \
+        -DCMAKE_C_FLAGS="-O0 -g -ggdb -std=c99 -Wall -Wextra -Wpedantic -Werror -fprofile-arcs -ftest-coverage -DFUZZ_TOOL=3" \
         -DCMAKE_EXE_LINKER_FLAGS="-fprofile-arcs -ftest-coverage" \
         -DSANITIZE_ADDRESS=On -DSANITIZE_UNDEFINED=On .. && \
-    make -j && cd .. && return 0 || return 1
+    make -j && cd .. && \
+    mkdir -p $libfuzzer_no_sanitizer_build_dir &&
+    cd $libfuzzer_no_sanitizer_build_dir && \
+    cmake \
+        -DCMAKE_C_COMPILER_WORKS=1 \
+        -DCMAKE_CXX_COMPILER_WORKS=1 \
+        -DCMAKE_CXX_COMPILER=clang++ \
+        -DCMAKE_C_COMPILER=clang \
+        -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=fuzzer" \
+        -DCMAKE_C_FLAGS="-std=c99 -Wall -Wextra -Wpedantic -Werror -g -O1 -fsanitize=fuzzer -DFUZZ_TOOL=1" \
+        -DCMAKE_CXX_FLAGS="-Wall -Wextra -Wpedantic -Werror -g -O1 -fsanitize=fuzzer -DFUZZ_TOOL=1" .. && \
+    make -j && cd .. &&
+    mkdir -p $libfuzzer_asan_build_dir &&
+    cd $libfuzzer_asan_build_dir && \
+    cmake \
+        -DCMAKE_C_COMPILER_WORKS=1 \
+        -DCMAKE_CXX_COMPILER_WORKS=1 \
+        -DCMAKE_CXX_COMPILER=clang++ \
+        -DCMAKE_C_COMPILER=clang \
+        -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=fuzzer,address" \
+        -DCMAKE_C_FLAGS="-std=c99 -Wall -Wextra -Wpedantic -Werror -g -O1 -fsanitize=fuzzer,address -DFUZZ_TOOL=1" \
+        -DCMAKE_CXX_FLAGS="-Wall -Wextra -Wpedantic -Werror -g -O1 -fsanitize=fuzzer,address -DFUZZ_TOOL=1" .. && \
+    make -j && cd .. &&
+    mkdir -p $libfuzzer_ubsan_build_dir &&
+    cd $libfuzzer_ubsan_build_dir && \
+    cmake \
+        -DCMAKE_C_COMPILER_WORKS=1 \
+        -DCMAKE_CXX_COMPILER_WORKS=1 \
+        -DCMAKE_CXX_COMPILER=clang++ \
+        -DCMAKE_C_COMPILER=clang \
+        -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=fuzzer,signed-integer-overflow" \
+        -DCMAKE_C_FLAGS="-std=c99 -Wall -Wextra -Wpedantic -Werror -g -O1 -fsanitize=fuzzer,signed-integer-overflow -DFUZZ_TOOL=1" \
+        -DCMAKE_CXX_FLAGS="-Wall -Wextra -Wpedantic -Werror -g -O1 -fsanitize=fuzzer,signed-integer-overflow -DFUZZ_TOOL=1" .. && \
+    make -j && cd .. &&
+    mkdir -p $libfuzzer_msan_build_dir &&
+    cd $libfuzzer_msan_build_dir && \
+    cmake \
+        -DCMAKE_C_COMPILER_WORKS=1 \
+        -DCMAKE_CXX_COMPILER_WORKS=1 \
+        -DCMAKE_CXX_COMPILER=clang++ \
+        -DCMAKE_C_COMPILER=clang \
+        -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=fuzzer,memory" \
+        -DCMAKE_C_FLAGS="-std=c99 -Wall -Wextra -Wpedantic -Werror -g -O1 -fsanitize=fuzzer,memory -DFUZZ_TOOL=1" \
+        -DCMAKE_CXX_FLAGS="-Wall -Wextra -Wpedantic -Werror -g -O1 -fsanitize=fuzzer,memory -DFUZZ_TOOL=1" .. && \
+    make -j && cd .. &&
+    return 0 || return 1
 }
 
 

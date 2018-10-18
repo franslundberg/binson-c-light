@@ -21,63 +21,18 @@
 /*======= Local variable declarations =======================================*/
 /*======= Global function implementations ===================================*/
 
-static int __main(int argc, char **argv)
+bool fuzz_one_input(const uint8_t *data, size_t size)
 {
-
-    (void) argc;
-    (void) argv;
-
-    ssize_t size;
-    uint8_t *buffer_cpy;
-    uint8_t buffer[4096];
-    char str_buffer[8192];
-
-
-    size = read(0, buffer, sizeof(buffer));
     bool ret;
-
-    if (size == 0) {
-        return -1;
-    }
-
-    buffer_cpy = malloc(size);
-
-    if (buffer_cpy == NULL) {
-        return -1;
-    }
-
-    memcpy(buffer_cpy, buffer, size);
+    char str_buffer[8192];
     binson_parser p;
     size_t psize = sizeof(str_buffer);
-    binson_parser_init(&p, buffer, size);
+    binson_parser_init(&p, data, size);
     ret = binson_parser_to_string(&p, str_buffer, &psize, true);
     printf("%*.*s\r\n", 0, (int) psize, (char*) str_buffer);
     ret |= binson_parser_to_string(&p, str_buffer, &psize, false);
     printf("%*.*s\r\n", 0, (int) psize, (char*) str_buffer);
-    if (ret) {
-        for (ssize_t i = 0; i < size; i++) {
-            printf("%02x", buffer_cpy[i]);
-        } printf("\r\n");
-    }
-
-    free(buffer_cpy);
-
-    return (ret) ? 0 : -1;
-
+    return ret;
 }
-
-int main(int argc, char **argv)
-{
-    #ifdef __AFL_LOOP
-    while (__AFL_LOOP(1000)) {
-        __main(argc, argv);
-    }
-    return 0;
-    #else
-    return __main(argc, argv);
-    #endif
-
-}
-
 
 /*======= Local function implementations ====================================*/
